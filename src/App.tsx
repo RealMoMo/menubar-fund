@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { FundCandidate } from "./types/fund";
+import type { FundCandidate, FundDetail } from "./types/fund";
 import { fetchFundCandidates, fetchFundDetails } from "./services/fundApi";
 import { useFundStore } from "./store/fundStore";
 import { loadState, saveState } from "./store/persistence";
 import { AddFund } from "./components/AddFund";
 import { FundRow } from "./components/FundRow";
 import { DetailPanel } from "./components/DetailPanel";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { MockPanel } from "./components/MockPanel";
+import { checkAlerts } from "./services/alerts";
+import { setMockNow } from "./services/clock";
 import { formatTrayTitleNamed, shortenName, formatTime } from "./utils/format";
 
 export default function App() {
@@ -14,6 +18,8 @@ export default function App() {
   const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [detailCode, setDetailCode] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showMock, setShowMock] = useState(false);
 
   // 截图模式:?shot=1 时自动打开第一只基金详情
   useEffect(() => {
@@ -84,12 +90,38 @@ export default function App() {
           st.recordEstimate(code, val);
         }
       }
+      // 阈值检查(spec §3.1:挂载于刷新流程)
+      await checkAlerts(map);
+      // 触发态图标管理:有 alerted 则亮,否则灭
+      await syncTrayAlert();
     } catch (e) {
       console.error("[refresh] 刷新失败:", e);
     } finally {
       store.setRefreshing(false);
     }
   }, [store]);
+
+  /** 同步菜单栏触发态图标:有未查看的 alerted 就亮,否则灭(spec §5.5) */
+  const syncTrayAlert = useCallback(async () => {
+    const st = useFundStore.getState();
+    await invoke("set_tray_alert", { active: st.alertedCodes.size > 0 });
+  }, []);
+
+  /** dev Mock 面板用:注入模拟时间 + 涨幅跑 checkAlerts(spec §8.2) */
+  const runMockCheck = useCallback(
+    async (mockTime: Date | null, overrides: Map<string, number>) => {
+      setMockNow(mockTime);
+      // 用当前 store 里的真实详情构造 map(若无则空)
+      const st = useFundStore.getState();
+      const map = new Map<string, FundDetail | Error>();
+      for (const [code, val] of st.details) {
+        map.set(code, val);
+      }
+      await checkAlerts(map, overrides);
+      await syncTrayAlert();
+    },
+    [syncTrayAlert]
+  );
 
   // ---- 后台定时刷新 ----
   useEffect(() => {
@@ -175,6 +207,22 @@ export default function App() {
           >
             {showAdd ? "✕" : "+"}
           </button>
+          <button
+            className="icon-btn"
+            onClick={() => setShowSettings(true)}
+            title="设置"
+          >
+            ⚙
+          </button>
+          {import.meta.env.DEV && (
+            <button
+              className="icon-btn"
+              onClick={() => setShowMock(true)}
+              title="模拟测试(仅开发)"
+            >
+              🧪
+            </button>
+          )}
         </div>
       </header>
 
@@ -225,6 +273,15 @@ export default function App() {
         <DetailPanel
           code={detailCode}
           onClose={() => setDetailCode(null)}
+        />
+      )}
+
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+
+      {import.meta.env.DEV && showMock && (
+        <MockPanel
+          onClose={() => setShowMock(false)}
+          onRun={runMockCheck}
         />
       )}
     </div>
