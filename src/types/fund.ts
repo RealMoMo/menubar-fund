@@ -24,6 +24,12 @@ export interface FundItem {
   code: string;
   name: string;
   addedAt: number;
+  /** 覆盖全局涨超阈值(%),null=该基金关此方向。仅 alertOverride=true 时生效 */
+  alertUp?: number | null;
+  /** 覆盖全局跌超阈值(%),null=该基金关此方向。仅 alertOverride=true 时生效 */
+  alertDown?: number | null;
+  /** true=用本基金自己的阈值,缺省/false=跟随全局设置 */
+  alertOverride?: boolean;
 }
 
 /** 基金经理 */
