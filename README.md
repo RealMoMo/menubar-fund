@@ -6,11 +6,11 @@
 
 ---
 
-## 为什么有这个项目
+## 项目缘起
 
-[fishing-funds](https://github.com/1zilc/fishing-funds) 是一款优秀的开源基金状态栏 App。但在使用中发现其**「添加自选基金」功能失效**——经排查,根因是天天基金(东方财富)下线了实时估值接口 `fundgz.1234567.com.cn`(返回 404),而该 App 添加基金时必须调用此接口校验;更糟的是,其核心数据层私有子模块 `fishing-funds-enh` 已被作者从 GitHub 删除,无法基于原项目修复。
+[fishing-funds](https://github.com/1zilc/fishing-funds) 是一款优秀的开源 macOS 基金状态栏 App,产品形态与交互设计都值得学习。
 
-本项目**参考 fishing-funds 的产品形态与交互思路,从零重写**,数据源改用仍存活的 `pingzhongdata` 接口,并在此基础上实现了**盘中实时估值**(原项目依赖的接口已死的部分功能)。
+本项目基于其产品形态与交互思路**从零重写**:数据源采用 `pingzhongdata` 接口,并在此基础上实现了**盘中实时估值**(基于前十大重仓股行情加权推算)。
 
 **特别感谢** [1zilc/fishing-funds](https://github.com/1zilc/fishing-funds) 作者的产品设计与交互灵感。
 
@@ -51,7 +51,7 @@
 
 ## 盘中估值算法
 
-盘中实时估值是本项目的核心功能(因为天天基金的 `fundgz` 实时估值接口已下线,需自行推算)。
+盘中实时估值是本项目的核心功能——通过前十大重仓股的实时行情加权推算基金估算净值。
 
 ### 数据来源(均已实测可用)
 
@@ -129,7 +129,7 @@ menubar-fund/
 
 ## 设计要点
 
-- **数据层不吞错**:service 抛出语义化错误类型(`NetworkError`/`FundNotFoundError`/`ParseError`),UI 据此给明确提示——吸取 fishing-funds 静默吞错(`catch { return {} }`)导致用户只看到无意义「添加失败」的教训
+- **数据层不吞错**:service 抛出语义化错误类型(`NetworkError`/`FundNotFoundError`/`ParseError`),UI 据此给出明确提示,而不是笼统的「添加失败」
 - **正则解析,绝不 eval**:`pingzhongdata` 是 JS 文件,用平衡括号扫描 + JSON.parse 提取,每字段独立容错
 - **数据源可替换**:数据层抽象为 service,若 `pingzhongdata` 也失效可替换实现
 
