@@ -15,6 +15,27 @@ fn set_tray_title(app: tauri::AppHandle, title: String) {
     }
 }
 
+/// 前端调用:切换状态栏图标为触发态(红点)/正常态
+/// spec §5.5 辅助提示
+#[tauri::command]
+fn set_tray_alert(app: tauri::AppHandle, active: bool) {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        if active {
+            // 触发态:用带红点的图标(编译期嵌入,避免运行期路径问题)
+            if let Ok(icon) = tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/icon-alert.png"
+            )) {
+                let _ = tray.set_icon(Some(icon));
+                let _ = tray.set_icon_as_template(false); // 彩色图标不用 template
+            }
+        } else {
+            // 恢复默认图标 + template 模式
+            let _ = tray.set_icon(app.default_window_icon().cloned());
+            let _ = tray.set_icon_as_template(true);
+        }
+    }
+}
+
 /// 把悬浮窗定位到状态栏图标正下方
 /// position 是 tray 事件的物理坐标(图标点击位置)
 fn place_window(window: &tauri::WebviewWindow, position: (f64, f64)) {
@@ -59,7 +80,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![set_tray_title])
+        .plugin(tauri_plugin_notification::init())
+        .invoke_handler(tauri::generate_handler![set_tray_title, set_tray_alert])
         .setup(|app| {
             #[cfg(debug_assertions)]
             {

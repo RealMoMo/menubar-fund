@@ -6,12 +6,18 @@
   "permissions": [
     "core:default",
     "store:default",
+    "notification:default",
+    "notification:allow-notify",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
     {
       "identifier": "http:default",
       "allow": [
         { "url": "https://fund.eastmoney.com/*" },
         { "url": "https://*.eastmoney.com/*" },
-        { "url": "https://push2.eastmoney.com/*" }
+        { "url": "https://push2.eastmoney.com/*" },
+        { "url": "http://timor.tech/*" },
+        { "url": "https://timor.tech/*" }
       ]
     }
   ]
