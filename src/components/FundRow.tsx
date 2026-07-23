@@ -1,5 +1,6 @@
 import type { FundDetail, FundItem } from "../types/fund";
 import { formatNetValue, formatPercent, trend, formatDate, formatTime } from "../utils/format";
+import { useFundStore } from "../store/fundStore";
 
 interface FundRowProps {
   item: FundItem;
@@ -20,6 +21,8 @@ export function FundRow({
   onOpenDetail,
   onRemove,
 }: FundRowProps) {
+  // 当天是否触发过阈值(辅助提示,spec §5.6)
+  const alerted = useFundStore((s) => s.alertedCodes.has(item.code));
   // 交易时段有估算值时,优先显示估算;否则显示历史净值
   const est = detail?.estimate;
   const showEstimate = !!est;
@@ -33,7 +36,11 @@ export function FundRow({
   };
 
   return (
-    <div className={`fund-row ${active ? "fund-row-active" : ""}`}>
+    <div
+      className={`fund-row ${active ? "fund-row-active" : ""} ${
+        alerted ? "fund-row-alerted" : ""
+      }`}
+    >
       <button
         className="fund-radio"
         title={active ? "状态栏显示中" : "设为状态栏显示"}
@@ -55,6 +62,11 @@ export function FundRow({
         ) : detail ? (
           <div className="fund-value-line">
             {showEstimate && <span className="est-badge">估</span>}
+            {alerted && (
+              <span className="alert-badge" title="今日触发过阈值">
+                🔔
+              </span>
+            )}
             <span className="fund-value">{formatNetValue(value)}</span>
             <span className={`fund-return fund-return-${tr}`}>
               {formatPercent(ret)}

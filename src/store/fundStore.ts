@@ -4,6 +4,11 @@
 
 import { create } from "zustand";
 import type { FundDetail, FundItem } from "../types/fund";
+import type { Settings } from "../types/settings";
+import type { HolidayEntry } from "../types/holiday";
+import { DEFAULT_SETTINGS } from "../types/settings";
+// 复用 clock 的 todayStr(mock 感知),避免两套时间体系(spec §8.2)
+import { todayStr } from "../services/clock";
 
 /** 单日估算快照(方案B:采集数据用于日后校准分析) */
 export interface EstimateSnapshot {
@@ -24,26 +29,19 @@ export interface EstimateSnapshot {
 export interface PersistedState {
   funds: FundItem[];
   activeCode: string | null;
-  settings: {
-    refreshInterval: number; // 秒
-    /** 状态栏轮播开关 */
-    carousel: boolean;
-    /** 轮播间隔(秒) */
-    carouselInterval: number;
-  };
+  settings: Settings;
   /** 估算历史快照:code -> 快照数组(方案B采集,供日后校准) */
   estimateHistory: Record<string, EstimateSnapshot[]>;
+  /** 节假日缓存:dateStr(YYYY-MM-DD) -> entry。跨会话持久化(spec §6.1) */
+  holidayCache: Record<string, HolidayEntry>;
 }
 
 const DEFAULT_STATE: PersistedState = {
   funds: [],
   activeCode: null,
-  settings: {
-    refreshInterval: 60,
-    carousel: true,
-    carouselInterval: 5,
-  },
+  settings: { ...DEFAULT_SETTINGS },
   estimateHistory: {},
+  holidayCache: {},
 };
 
 interface FundStore extends PersistedState {
@@ -55,6 +53,15 @@ interface FundStore extends PersistedState {
   refreshing: boolean;
   /** 各基金上次刷新错误(code -> message),用于离线降级展示 */
   errors: Map<string, string>;
+  /** 阈值提醒运行时状态(非持久化) */
+  /** 记录的当天日期 YYYY-MM-DD,用于跨日重置检测 */
+  alertToday: string;
+  /** 今天上午已检查过的 code 集合 */
+  morningChecked: Set<string>;
+  /** 今天下午已通知的 code 集合(去重) */
+  afternoonNotified: Set<string>;
+  /** 今天触发过阈值的 code 集合(供辅助提示消费:菜单栏图标/列表行高亮) */
+  alertedCodes: Set<string>;
 
   // 动作
   addFund: (item: FundItem) => void;
@@ -65,6 +72,23 @@ interface FundStore extends PersistedState {
   setRefreshInterval: (sec: number) => void;
   setCarousel: (enabled: boolean) => void;
   setCarouselInterval: (sec: number) => void;
+  setAlertEnabled: (v: boolean) => void;
+  setAlertUp: (v: number | null) => void;
+  setAlertDown: (v: number | null) => void;
+  setAlertMorningTime: (v: string) => void;
+  setAlertAfternoonStart: (v: string) => void;
+  /** 更新单基金 override 配置 */
+  setFundAlert: (code: string, patch: Partial<Pick<FundItem, "alertUp" | "alertDown" | "alertOverride">>) => void;
+  /** 设置节假日缓存 */
+  setHoliday: (dateStr: string, entry: HolidayEntry) => void;
+  /** 跨日/收盘重置提醒运行时状态(alertToday 改为今日,清空三个集合) */
+  resetAlertState: (today: string) => void;
+  /** 把 code 加入对应窗口的去重集合 */
+  markChecked: (code: string, win: "morning" | "afternoon") => void;
+  /** 把 code 加入 alertedCodes */
+  markAlerted: (code: string) => void;
+  /** 清空 alertedCodes(15:00 后复位列表高亮) */
+  clearAlerted: () => void;
   reorderFunds: (from: number, to: number) => void;
   /** 采集估算快照 + 回填前一日实际净值(方案B) */
   recordEstimate: (code: string, detail: FundDetail) => void;
@@ -73,14 +97,6 @@ interface FundStore extends PersistedState {
   hydrate: (state: PersistedState) => void;
   /** 导出可持久化部分 */
   exportPersisted: () => PersistedState;
-}
-
-/** 当天日期 YYYY-MM-DD(本地) */
-function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
 }
 
 /** 净值日期(时间戳)转 YYYY-MM-DD */
@@ -97,6 +113,10 @@ export const useFundStore = create<FundStore>((set, get) => ({
   lastRefreshAt: 0,
   refreshing: false,
   errors: new Map(),
+  alertToday: todayStr(),
+  morningChecked: new Set(),
+  afternoonNotified: new Set(),
+  alertedCodes: new Set(),
 
   addFund: (item) =>
     set((s) => {
@@ -153,6 +173,57 @@ export const useFundStore = create<FundStore>((set, get) => ({
   setCarouselInterval: (sec) =>
     set((s) => ({ settings: { ...s.settings, carouselInterval: sec } })),
 
+  setAlertEnabled: (v) => set((s) => ({ settings: { ...s.settings, alertEnabled: v } })),
+
+  setAlertUp: (v) => set((s) => ({ settings: { ...s.settings, alertUp: v } })),
+
+  setAlertDown: (v) => set((s) => ({ settings: { ...s.settings, alertDown: v } })),
+
+  setAlertMorningTime: (v) =>
+    set((s) => ({ settings: { ...s.settings, alertMorningTime: v } })),
+
+  setAlertAfternoonStart: (v) =>
+    set((s) => ({ settings: { ...s.settings, alertAfternoonStart: v } })),
+
+  setFundAlert: (code, patch) =>
+    set((s) => ({
+      funds: s.funds.map((f) => (f.code === code ? { ...f, ...patch } : f)),
+    })),
+
+  setHoliday: (dateStr, entry) =>
+    set((s) => ({
+      holidayCache: { ...s.holidayCache, [dateStr]: entry },
+    })),
+
+  resetAlertState: (today) =>
+    set(() => ({
+      alertToday: today,
+      morningChecked: new Set(),
+      afternoonNotified: new Set(),
+      alertedCodes: new Set(),
+    })),
+
+  markChecked: (code, win) =>
+    set((s) => {
+      if (win === "morning") {
+        const next = new Set(s.morningChecked);
+        next.add(code);
+        return { morningChecked: next };
+      }
+      const next = new Set(s.afternoonNotified);
+      next.add(code);
+      return { afternoonNotified: next };
+    }),
+
+  markAlerted: (code) =>
+    set((s) => {
+      const next = new Set(s.alertedCodes);
+      next.add(code);
+      return { alertedCodes: next };
+    }),
+
+  clearAlerted: () => set({ alertedCodes: new Set() }),
+
   reorderFunds: (from, to) =>
     set((s) => {
       const funds = [...s.funds];
@@ -205,8 +276,15 @@ export const useFundStore = create<FundStore>((set, get) => ({
     set((s) => ({
       funds: state.funds ?? [],
       activeCode: state.activeCode ?? null,
-      settings: { ...s.settings, ...state.settings },
+      // 老数据可能缺 alert* 字段:用默认值兜底,再用老数据覆盖已有字段
+      settings: { ...DEFAULT_SETTINGS, ...s.settings, ...state.settings },
       estimateHistory: state.estimateHistory ?? {},
+      holidayCache: state.holidayCache ?? {},
+      // 运行时状态重置为今天
+      alertToday: todayStr(),
+      morningChecked: new Set(),
+      afternoonNotified: new Set(),
+      alertedCodes: new Set(),
     })),
 
   exportPersisted: () => {
@@ -216,6 +294,7 @@ export const useFundStore = create<FundStore>((set, get) => ({
       activeCode: s.activeCode,
       settings: s.settings,
       estimateHistory: s.estimateHistory,
+      holidayCache: s.holidayCache,
     };
   },
 }));

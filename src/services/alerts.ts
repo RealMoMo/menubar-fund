@@ -1,0 +1,161 @@
+// 阈值检查核心逻辑(spec §3)
+// 纯函数为主,便于单测;checkAlerts 编排副作用
+
+import type { FundDetail, FundItem } from "../types/fund";
+import type { Settings } from "../types/settings";
+import { now, hhmm, todayStr } from "./clock";
+import { isTradingDay } from "./holiday";
+import { useFundStore } from "../store/fundStore";
+import { notifyAlert } from "./notification";
+
+/** 把 "HH:MM" 解析为当日分钟数(0-1439)。非法返回 null */
+export function parseHHMM(t: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+export type AlertWindow = "morning" | "afternoon" | "none";
+
+/**
+ * 判断当前时间处于哪个检查窗口(spec §3.2)
+ * 上午窗口:now 的 "HH:MM" 严格 === alertMorningTime(仅到点那一分钟)
+ * 下午窗口:alertAfternoonStart ≤ now < "15:00"(闭开区间)
+ */
+export function getAlertWindow(settings: Settings, d: Date = now()): AlertWindow {
+  const cur = hhmm(d);
+  const afternoonEnd = "15:00";
+
+  // 下午窗口优先判断(范围更大)
+  if (cur >= settings.alertAfternoonStart && cur < afternoonEnd) return "afternoon";
+
+  // 上午窗口:严格等于
+  if (cur === settings.alertMorningTime) return "morning";
+
+  return "none";
+}
+
+/** 阈值取值:单基金 override 时用基金值,否则用全局(spec §3.5) */
+export function resolveThresholds(
+  fund: FundItem,
+  settings: Settings
+): { up: number | null; down: number | null } {
+  if (fund.alertOverride) {
+    return { up: fund.alertUp ?? null, down: fund.alertDown ?? null };
+  }
+  return { up: settings.alertUp, down: settings.alertDown };
+}
+
+/**
+ * 判断某涨幅是否命中阈值
+ * @returns 'up' | 'down' | null(未命中)。up 优先(涨超阈值时即使同时满足 down 也报 up)
+ */
+export function checkThresholdHit(
+  pct: number,
+  up: number | null,
+  down: number | null
+): "up" | "down" | null {
+  if (up != null && pct >= up) return "up";
+  if (down != null && pct <= down) return "down";
+  return null;
+}
+
+/** 跨日重置:若 alertToday ≠ 今天,清空集合。返回是否发生了重置 */
+export function rollOverDayIfNeeded(today: string = todayStr()): boolean {
+  const store = useFundStore.getState();
+  if (store.alertToday !== today) {
+    store.resetAlertState(today);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 阈值检查主流程(spec §3.4)
+ * 挂载于 refresh() 之后,遍历基金详情,超阈值发通知 + 标记
+ * @param map 刷新拿到的基金详情
+ * @param overrides dev-only:强制某基金 estGszl(测试用)
+ */
+export async function checkAlerts(
+  map: Map<string, FundDetail | Error>,
+  overrides?: Map<string, number>
+): Promise<void> {
+  const store = useFundStore.getState();
+  const dbg = (m: string) => {
+    if (import.meta.env.DEV) console.log(`[checkAlerts] ${m}`);
+  };
+
+  if (!store.settings.alertEnabled) {
+    dbg("跳过: alertEnabled=false(请先在设置⚙️里开启提醒)");
+    return;
+  }
+
+  rollOverDayIfNeeded();
+
+  const win = getAlertWindow(store.settings);
+  dbg(
+    `窗口=${win} | funds=${store.funds.length} | map大小=${map.size} | overrides=${
+      overrides?.size ?? 0
+    }`
+  );
+  if (win === "none") {
+    // 窗口结束(如15:00收盘后):复位当日辅助提示——清空 alertedCodes
+    // 让悬浮窗行高亮/🔔 当日收盘后复位(spec §3.2)。图标由 App.syncTrayAlert 统一切换。
+    if (store.alertedCodes.size > 0) {
+      store.clearAlerted();
+      dbg("窗口结束,已清空 alertedCodes");
+    } else {
+      dbg("窗口none,无操作");
+    }
+    return;
+  }
+
+  if (!isTradingDay()) {
+    dbg("跳过: 非交易日(节假日/周末)");
+    return;
+  }
+
+  const funds = store.funds;
+  for (const fund of funds) {
+    // 去重:同一窗口已处理过的跳过
+    if (win === "morning" && store.morningChecked.has(fund.code)) {
+      dbg(`${fund.code} 跳过: 上午已检查`);
+      continue;
+    }
+    if (win === "afternoon" && store.afternoonNotified.has(fund.code)) {
+      dbg(`${fund.code} 跳过: 下午已通知`);
+      continue;
+    }
+
+    const val = map.get(fund.code);
+    if (!val || val instanceof Error) {
+      dbg(`${fund.code} 跳过: 详情缺失或错误`);
+      continue;
+    }
+
+    // 取估算涨幅(支持 dev override)
+    let pct = overrides?.get(fund.code);
+    if (pct == null) pct = val.estimate?.estGszl;
+    if (pct == null) {
+      dbg(`${fund.code} 跳过: 无估算涨幅(非交易时段真实数据无 estimate)`);
+      continue;
+    }
+
+    const { up, down } = resolveThresholds(fund, store.settings);
+    const hit = checkThresholdHit(pct, up, down);
+    if (!hit) {
+      dbg(`${fund.code} 未命中: pct=${pct?.toFixed(2)}% 阈值 up=${up}/down=${down}`);
+      continue;
+    }
+
+    dbg(`✅ ${fund.code} 命中 ${hit}: pct=${pct!.toFixed(2)}% → 发通知+标记`);
+    // 发通知 + 标记(通知正文带上命中的阈值,便于用户核对)
+    const threshold = hit === "up" ? up! : down!;
+    await notifyAlert(fund, pct, hit, threshold);
+    store.markAlerted(fund.code);
+    store.markChecked(fund.code, win);
+  }
+}
