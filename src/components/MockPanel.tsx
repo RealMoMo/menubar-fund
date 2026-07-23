@@ -1,8 +1,9 @@
 // Dev 模拟面板(仅 import.meta.env.DEV 可见,spec §8)
 // 注入模拟时钟 + 模拟估值涨幅,端到端验证 checkAlerts 生命周期
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useFundStore } from "../store/fundStore";
+import { setMockNotifyMode } from "../services/notification";
 
 interface MockPanelProps {
   onClose: () => void;
@@ -44,6 +45,21 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [looping, setLooping] = useState(false);
   const loopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  // 新日志追加后自动滚到底部(否则只看到最上面那条)
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  // 打开 MockPanel 时进入 mock 通知模式(loop demo 不真发系统通知,只走业务逻辑);
+  // 关闭时还原为真实通知。避免 dev 下连发通知拖慢/卡住 loop
+  useEffect(() => {
+    setMockNotifyMode(true);
+    return () => setMockNotifyMode(false);
+  }, []);
 
   const log = (msg: string) => {
     const ts = new Date().toLocaleTimeString("zh-CN", { hour12: false });
@@ -238,7 +254,7 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
 
           <div className="detail-section">
             <h4>运行日志</h4>
-            <div className="mock-log">
+            <div className="mock-log" ref={logRef}>
               {logs.length === 0 ? (
                 <div style={{ color: "#86868b" }}>暂无日志</div>
               ) : (

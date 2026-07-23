@@ -28,6 +28,13 @@ export async function hasNotificationPermission(): Promise<boolean> {
   return await isPermissionGranted();
 }
 
+/** dev-only:mock 模式下跳过真实系统通知(避免连发通知拖慢 loop demo,
+ *  且 dev 下通知图标显示终端图标无意义)。由 MockPanel 设置 */
+let mockMode = false;
+export function setMockNotifyMode(v: boolean): void {
+  mockMode = v;
+}
+
 /**
  * 发送阈值触发通知(spec §5.4)
  * @param fund 基金
@@ -46,6 +53,12 @@ export async function notifyAlert(
   const sign = pct > 0 ? "+" : "";
   const thSign = threshold > 0 ? "+" : "";
   const body = `当前估算涨幅 ${sign}${pct.toFixed(2)}%，已${up ? "涨超" : "跌破"}阈值 ${thSign}${threshold}%`;
+
+  // mock 模式只记录,不真发(见 setMockNotifyMode 说明)
+  if (mockMode) {
+    console.log(`[notify-mock] ${title} | ${body}`);
+    return;
+  }
   try {
     await sendNotification({ title, body });
   } catch (e) {
