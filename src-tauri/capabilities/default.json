@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "默认权限:核心 + http(东方财富域名) + store",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "store:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://fund.eastmoney.com/*" },
+        { "url": "https://*.eastmoney.com/*" },
+        { "url": "https://push2.eastmoney.com/*" }
+      ]
+    }
+  ]
+}
