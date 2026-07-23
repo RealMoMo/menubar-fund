@@ -94,7 +94,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 max="11:29"
                 value={settings.alertMorningTime}
                 disabled={disabled}
-                onChange={(e) => setAlertMorningTime(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // clamp 到上午交易时段 09:30-11:29,避免越界导致窗口永不命中
+                  if (v >= "09:30" && v <= "11:29") setAlertMorningTime(v);
+                }}
               />
             </div>
 
@@ -106,7 +110,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 max="14:59"
                 value={settings.alertAfternoonStart}
                 disabled={disabled}
-                onChange={(e) => setAlertAfternoonStart(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // clamp 到下午交易时段 13:00-14:59
+                  if (v >= "13:00" && v <= "14:59") setAlertAfternoonStart(v);
+                }}
               />
             </div>
 

@@ -139,11 +139,16 @@ describe("checkAlerts 端到端业务路径 (spec §10.1)", () => {
     expect(sentNotifications).toHaveLength(0);
   });
 
-  it("路径7: 15:00 后窗口结束 → none,不报", async () => {
+  it("路径7: 15:00 后窗口结束 → none,不报且清空 alertedCodes 复位高亮", async () => {
+    // 先在上午触发,使 alertedCodes 非空
+    setMockNow(mkDate(11, 0));
+    await checkAlerts(mkMap([{ code: "110011", name: "易方达蓝筹", estGszl: 5.0 }]));
+    expect(useFundStore.getState().alertedCodes.size).toBe(1);
+    // 15:05 收盘后
     setMockNow(mkDate(15, 5));
-    const map = mkMap([{ code: "110011", name: "易方达蓝筹", estGszl: 10.0 }]);
-    await checkAlerts(map);
-    expect(sentNotifications).toHaveLength(0);
+    await checkAlerts(mkMap([{ code: "110011", name: "易方达蓝筹", estGszl: 10.0 }]));
+    expect(sentNotifications).toHaveLength(1); // 仅上午那 1 条
+    expect(useFundStore.getState().alertedCodes.size).toBe(0); // 已清空
   });
 
   it("路径8: 区间内未达阈值 → 不报", async () => {

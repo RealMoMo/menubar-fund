@@ -7,6 +7,8 @@ import type { FundDetail, FundItem } from "../types/fund";
 import type { Settings } from "../types/settings";
 import type { HolidayEntry } from "../types/holiday";
 import { DEFAULT_SETTINGS } from "../types/settings";
+// 复用 clock 的 todayStr(mock 感知),避免两套时间体系(spec §8.2)
+import { todayStr } from "../services/clock";
 
 /** 单日估算快照(方案B:采集数据用于日后校准分析) */
 export interface EstimateSnapshot {
@@ -95,14 +97,6 @@ interface FundStore extends PersistedState {
   hydrate: (state: PersistedState) => void;
   /** 导出可持久化部分 */
   exportPersisted: () => PersistedState;
-}
-
-/** 当天日期 YYYY-MM-DD(本地) */
-function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
 }
 
 /** 净值日期(时间戳)转 YYYY-MM-DD */

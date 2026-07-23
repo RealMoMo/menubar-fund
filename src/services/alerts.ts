@@ -89,7 +89,14 @@ export async function checkAlerts(
   rollOverDayIfNeeded();
 
   const win = getAlertWindow(store.settings);
-  if (win === "none") return;
+  if (win === "none") {
+    // 窗口结束(如15:00收盘后):复位当日辅助提示——清空 alertedCodes
+    // 让悬浮窗行高亮/🔔 当日收盘后复位(spec §3.2)。图标由 App.syncTrayAlert 统一切换。
+    if (store.alertedCodes.size > 0) {
+      store.clearAlerted();
+    }
+    return;
+  }
 
   if (!isTradingDay()) return; // 非交易日不检查
 
@@ -111,8 +118,9 @@ export async function checkAlerts(
     const hit = checkThresholdHit(pct, up, down);
     if (!hit) continue;
 
-    // 发通知 + 标记
-    await notifyAlert(fund, pct, hit);
+    // 发通知 + 标记(通知正文带上命中的阈值,便于用户核对)
+    const threshold = hit === "up" ? up! : down!;
+    await notifyAlert(fund, pct, hit, threshold);
     store.markAlerted(fund.code);
     store.markChecked(fund.code, win);
   }

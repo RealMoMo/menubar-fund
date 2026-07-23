@@ -7,7 +7,7 @@ import type { HolidayEntry } from "../types/holiday";
 import { useFundStore } from "../store/fundStore";
 import { todayStr, now } from "./clock";
 
-const HOLIDAY_API = (date: string) => `http://timor.tech/api/holiday/info/${date}`;
+const HOLIDAY_API = (date: string) => `https://timor.tech/api/holiday/info/${date}`;
 const REQUEST_TIMEOUT = 5000;
 
 /** timor.tech 响应结构(只取关心字段) */

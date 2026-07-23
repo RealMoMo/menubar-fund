@@ -33,18 +33,19 @@ export async function hasNotificationPermission(): Promise<boolean> {
  * @param fund 基金
  * @param pct 当前估算涨幅(%)
  * @param direction 'up'=涨超 'down'=跌超
+ * @param threshold 命中的阈值(%),用于通知正文展示
  */
 export async function notifyAlert(
   fund: FundItem,
   pct: number,
-  direction: "up" | "down"
+  direction: "up" | "down",
+  threshold: number
 ): Promise<void> {
   const up = direction === "up";
   const title = `🔔 ${fund.name} ${up ? "涨超" : "跌超"}阈值`;
   const sign = pct > 0 ? "+" : "";
-  const body = `当前估算涨幅 ${sign}${pct.toFixed(2)}%，已${
-    up ? "涨超" : "跌破"
-  }你设置的阈值`;
+  const thSign = threshold > 0 ? "+" : "";
+  const body = `当前估算涨幅 ${sign}${pct.toFixed(2)}%，已${up ? "涨超" : "跌破"}阈值 ${thSign}${threshold}%`;
   try {
     await sendNotification({ title, body });
   } catch (e) {
