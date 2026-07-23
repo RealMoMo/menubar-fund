@@ -28,6 +28,9 @@ const RANGE_DAYS: Record<Range, number> = {
 export function DetailPanel({ code, onClose }: DetailPanelProps) {
   const detail = useFundStore((s) => s.details.get(code)) as FundDetail | undefined;
   const errorMsg = useFundStore((s) => s.errors.get(code));
+  // 单基金阈值 override 配置(spec §7.3)
+  const fundItem = useFundStore((s) => s.funds.find((f) => f.code === code));
+  const setFundAlert = useFundStore((s) => s.setFundAlert);
   const [localDetail, setLocalDetail] = useState<FundDetail | undefined>(detail);
   const [loading, setLoading] = useState(!detail);
   const [error, setError] = useState<string | null>(null);
@@ -295,6 +298,62 @@ export function DetailPanel({ code, onClose }: DetailPanelProps) {
               ))}
             </div>
           )}
+
+          {/* 单基金涨跌提醒 override 分区 (spec §7.3) */}
+          <div className="detail-section">
+            <h4>涨跌提醒</h4>
+            <div className="setting-row">
+              <label className="setting-label">单独设置</label>
+              <input
+                type="checkbox"
+                checked={fundItem?.alertOverride ?? false}
+                onChange={(e) =>
+                  setFundAlert(code, { alertOverride: e.target.checked })
+                }
+              />
+              <span className="setting-sublabel">
+                {fundItem?.alertOverride
+                  ? "（使用本基金阈值）"
+                  : "（关闭=跟随全局）"}
+              </span>
+            </div>
+            {fundItem?.alertOverride && (
+              <>
+                <div className="setting-row">
+                  <label className="setting-label">涨超 (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={fundItem.alertUp ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFundAlert(code, {
+                        alertUp: v === "" ? null : Math.max(0, Number(v)),
+                      });
+                    }}
+                    placeholder="留空=不报"
+                  />
+                </div>
+                <div className="setting-row">
+                  <label className="setting-label">跌超 (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    max="0"
+                    value={fundItem.alertDown ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFundAlert(code, {
+                        alertDown: v === "" ? null : Math.min(0, Number(v)),
+                      });
+                    }}
+                    placeholder="留空=不报"
+                  />
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
