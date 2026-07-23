@@ -1,8 +1,9 @@
 // 状态栏基金 - Tauri 主进程
-// 职责:Tray 状态栏图标、左键点击 toggle 悬浮窗并定位、运行时改标题
+// 职责:Tray 状态栏图标、左键点击 toggle 悬浮窗并定位、右键菜单(退出)、运行时改标题
 
 use tauri::{
     Manager,
+    menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     LogicalPosition,
 };
@@ -92,6 +93,10 @@ pub fn run() {
                 )?;
             }
 
+            // 右键菜单(基础项:退出)。左键单击仍走 toggle 悬浮窗。
+            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&quit_item])?;
+
             // 创建状态栏图标
             let _tray = TrayIconBuilder::with_id("main-tray")
                 .tooltip("状态栏基金")
@@ -99,6 +104,13 @@ pub fn run() {
                 .icon_as_template(true)
                 .title("¥--")
                 .show_menu_on_left_click(false)
+                .menu(&menu)
+                .on_menu_event(|app, event| {
+                    // 右键菜单点击
+                    if event.id().as_ref() == "quit" {
+                        app.exit(0);
+                    }
+                })
                 .on_tray_icon_event(|tray, event| {
                     // 只响应左键单击抬起
                     let app = tray.app_handle();
@@ -125,7 +137,6 @@ pub fn run() {
             // 失焦自动隐藏(类 menubar 体验)。截图模式(MF_SCREENSHOT)下居中显示且不隐藏
             if let Some(window) = app.get_webview_window("main") {
                 if std::env::var("MF_SCREENSHOT").as_deref() == Ok("1") {
-                    use tauri::Manager;
                     let _ = window.show();
                     let _ = window.center();
                     let _ = window.set_focus();
