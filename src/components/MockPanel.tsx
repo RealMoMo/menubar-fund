@@ -112,7 +112,9 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
     }
     loopingRef.current = true;
     setLooping(true);
-    log("▶ 开始 loop demo");
+    // 启动时先清空残留状态(用户可能之前手动跑过单次,残留 morning/afternoon 集合)
+    useFundStore.getState().resetAlertState("2026-07-23");
+    log("▶ 开始 loop demo (已重置状态)");
     const steps: Array<{ t: string; label: string; ov: Record<string, string> }> = [
       { t: "11:00", label: "上午定点(应触发)", ov: triggerValues() },
       { t: "11:00", label: "上午同点再跑(去重,应不报)", ov: triggerValues() },
@@ -126,7 +128,9 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
       // 用 ref 判断是否继续(闭包里的 state 是陈旧的)
       if (!loopingRef.current) return;
       if (i >= steps.length) {
-        log("✓ loop demo 一轮完成,重新开始");
+        // 每轮重置:清空提醒去重集合(模拟跨日),否则残留状态导致后续轮次全被去重跳过
+        useFundStore.getState().resetAlertState("2026-07-23");
+        log("✓ loop demo 一轮完成,已重置状态,重新开始");
         i = 0;
       }
       const step = steps[i];
