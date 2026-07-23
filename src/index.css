@@ -577,3 +577,73 @@ button {
   font-size: 11px;
   color: var(--text-secondary);
 }
+
+/* === 阈值提醒相关样式 (spec §7) === */
+
+/* 设置行(复用于 SettingsPanel/DetailPanel/MockPanel) */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  flex-wrap: wrap;
+}
+.setting-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+.setting-sublabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+.setting-error {
+  color: var(--up);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.setting-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding: 8px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+.setting-row input[type="number"],
+.setting-row input[type="time"] {
+  width: 100px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* FundRow 触发态(今日触发过阈值) */
+.fund-row-alerted {
+  background: rgba(226, 69, 60, 0.08);
+}
+.alert-badge {
+  color: var(--up);
+  font-size: 11px;
+  margin-right: 2px;
+}
+
+/* MockPanel 日志区 */
+.mock-log {
+  background: var(--bg-secondary);
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: "SF Mono", Menlo, monospace;
+  max-height: 220px;
+  overflow: auto;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
