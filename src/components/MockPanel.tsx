@@ -45,6 +45,9 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [looping, setLooping] = useState(false);
   const loopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ref 跟踪 loop 是否在跑:setTimeout 回调闭包里读 looping state 会拿到陈旧值
+  // (setLooping 是异步的,首次 tick 同步执行时闭包里的 looping 仍是 false → loop 卡在步骤1)
+  const loopingRef = useRef(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   // 新日志追加后自动滚到底部(否则只看到最上面那条)
@@ -103,10 +106,11 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
   /** loop demo:按交易日时间线快进,验证全部路径(spec §8.4) */
   const runLoop = () => {
     // 二次点击 = 停止
-    if (looping) {
+    if (loopingRef.current) {
       stopLoop();
       return;
     }
+    loopingRef.current = true;
     setLooping(true);
     log("▶ 开始 loop demo");
     const steps: Array<{ t: string; label: string; ov: Record<string, string> }> = [
@@ -119,6 +123,8 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
     ];
     let i = 0;
     const tick = async () => {
+      // 用 ref 判断是否继续(闭包里的 state 是陈旧的)
+      if (!loopingRef.current) return;
       if (i >= steps.length) {
         log("✓ loop demo 一轮完成,重新开始");
         i = 0;
@@ -131,7 +137,11 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
       const mockTime = parseTime(step.t);
       const ov = new Map<string, number>();
       for (const [c, v] of Object.entries(step.ov)) ov.set(c, Number(v));
-      await onRun(mockTime, ov);
+      try {
+        await onRun(mockTime, ov);
+      } catch (e) {
+        log(`⚠ 步骤 ${i + 1} 出错: ${e}`);
+      }
       const st = useFundStore.getState();
       log(
         `  → alerted=[${[...st.alertedCodes].join(
@@ -139,12 +149,18 @@ export function MockPanel({ onClose, onRun }: MockPanelProps) {
         )}] morning=${st.morningChecked.size} afternoon=${st.afternoonNotified.size}`
       );
       i++;
-      if (looping) loopTimer.current = setTimeout(tick, 1500);
+      // 安排下一步前再次确认仍在 loop
+      if (loopingRef.current) {
+        loopTimer.current = setTimeout(tick, 1500);
+      } else {
+        log("⏸ loop 已停止,不再安排下一步");
+      }
     };
     tick();
   };
 
   const stopLoop = () => {
+    loopingRef.current = false;
     if (loopTimer.current) {
       clearTimeout(loopTimer.current);
       loopTimer.current = null;
