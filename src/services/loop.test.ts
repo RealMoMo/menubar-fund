@@ -15,6 +15,7 @@ import {
   MINI_FUND_SEARCH,
   ERROR_404_RESPONSE,
 } from "./__fixtures__/mini_pingzhongdata";
+import { DEFAULT_SETTINGS } from "../types/settings";
 
 const LOOP = 200; // 循环次数
 
@@ -130,7 +131,7 @@ describe("Looper: 状态管理添加/刷新/删除循环一致性", () => {
       errors: new Map(),
       lastRefreshAt: 0,
       refreshing: false,
-      settings: { refreshInterval: 60, carousel: true, carouselInterval: 5 },
+      settings: { ...DEFAULT_SETTINGS },
     });
     return useFundStore;
   }
